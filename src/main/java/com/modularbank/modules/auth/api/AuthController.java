@@ -3,6 +3,7 @@ package com.modularbank.modules.auth.api;
 import com.modularbank.modules.auth.application.AuthUseCase;
 import com.modularbank.modules.auth.application.dto.AuthResponse;
 import com.modularbank.modules.auth.application.dto.LoginRequest;
+import com.modularbank.modules.auth.application.dto.RefreshRequest;
 import com.modularbank.modules.auth.application.dto.RegisterRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public AuthResponse refresh(@RequestParam String refreshToken) {
-        return authUseCase.refresh(refreshToken);
+    public AuthResponse refresh(@RequestBody @Valid RefreshRequest request) {
+        return authUseCase.refresh(request.refreshToken());
     }
 }

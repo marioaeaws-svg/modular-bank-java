@@ -15,10 +15,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +30,8 @@ public class AuthUseCase {
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     @Value("${jwt.refresh-expiration-days}")
     private int refreshExpirationDays;
@@ -58,7 +62,8 @@ public class AuthUseCase {
 
     @Transactional
     public AuthResponse refresh(String rawToken) {
-        RefreshToken refreshToken = refreshTokenRepository.findByToken(rawToken)
+        String hashedToken = hashToken(rawToken);
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(hashedToken)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
         if (refreshToken.getExpiresAt().isBefore(Instant.now())) {
             refreshTokenRepository.delete(refreshToken);
@@ -68,12 +73,13 @@ public class AuthUseCase {
         return buildAuthResponse(refreshToken.getUserId());
     }
 
-    private AuthResponse buildAuthResponse(java.util.UUID userId) {
+    private AuthResponse buildAuthResponse(UUID userId) {
         String accessToken = jwtUtil.generateAccessToken(userId);
         String rawRefreshToken = generateSecureToken();
+        String hashedToken = hashToken(rawRefreshToken);
         RefreshToken refreshToken = RefreshToken.builder()
             .userId(userId)
-            .token(rawRefreshToken)
+            .token(hashedToken)
             .expiresAt(Instant.now().plus(refreshExpirationDays, ChronoUnit.DAYS))
             .build();
         refreshTokenRepository.save(refreshToken);
@@ -82,7 +88,17 @@ public class AuthUseCase {
 
     private String generateSecureToken() {
         byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
+        SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String hashToken(String raw) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }
