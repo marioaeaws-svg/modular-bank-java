@@ -12,6 +12,6 @@ None (exposed only via REST API)
 3. Implement compensation logic:
    - Step 1: debit source account
    - Step 2: credit target account → if fails, compensate step 1
-   - Step 3: save transfer record
+   - Step 3: save transfer record → if this fails after debit+credit succeeded, there is no automatic rollback across services. Use the Outbox Pattern or idempotency keys to ensure the record is eventually persisted without re-debiting.
    - Step 4: notify (fire-and-forget)
    - Step 5: audit (fire-and-forget)
