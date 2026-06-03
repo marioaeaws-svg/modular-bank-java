@@ -1,3 +1,5 @@
+-- Note: user_id columns reference auth.users but no FK constraint is added (cross-schema module isolation).
+
 CREATE TABLE audit.audit_entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
