@@ -1,8 +1,8 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/modular_bank
-    username: bank
-    password: bank
+    username: ${DB_USER:bank}
+    password: ${DB_PASSWORD:bank}
   jpa:
     hibernate:
       ddl-auto: validate
