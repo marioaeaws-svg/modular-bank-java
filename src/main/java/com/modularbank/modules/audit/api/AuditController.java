@@ -18,6 +18,6 @@ public class AuditController {
     @GetMapping
     public List<AuditEntry> getAuditLog(Authentication auth) {
         UUID userId = (UUID) auth.getPrincipal();
-        return auditService.getForUser(userId);
+        return auditService.getForUser(userId);  // returns only the calling user's own entries
     }
 }

@@ -18,10 +18,13 @@ public class AuditServiceImpl implements AuditService {
     @Override
     @Transactional
     public void record(UUID userId, String action, Map<String, String> metadata) {
+        if (action == null || action.isBlank() || action.length() > 100) {
+            throw new IllegalArgumentException("action must be 1-100 characters");
+        }
         AuditEntry entry = AuditEntry.builder()
             .userId(userId)
             .action(action)
-            .metadata(metadata)
+            .metadata(metadata != null ? metadata : java.util.Map.of())
             .build();
         auditRepository.save(entry);
     }
