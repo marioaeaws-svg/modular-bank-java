@@ -9,8 +9,10 @@ import com.modularbank.modules.transfers.domain.Transfer;
 import com.modularbank.modules.transfers.infrastructure.TransferRepository;
 import com.modularbank.shared.domain.Money;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +28,9 @@ public class TransferUseCase {
 
     @Transactional
     public Transfer execute(UUID userId, TransferRequest request) {
+        if (request.sourceAccountId().equals(request.targetAccountId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Source and target accounts must be different");
+        }
         Money amount = Money.of(request.amount());
 
         accountsService.debit(request.sourceAccountId(), amount, request.reference());
@@ -37,7 +42,7 @@ public class TransferUseCase {
             .amount(request.amount())
             .reference(request.reference())
             .build();
-        transferRepository.save(transfer);
+        transfer = transferRepository.save(transfer);
 
         notificationsService.send(userId, NotificationType.TRANSFER_SENT, Map.of(
             "amount", request.amount().toPlainString(),

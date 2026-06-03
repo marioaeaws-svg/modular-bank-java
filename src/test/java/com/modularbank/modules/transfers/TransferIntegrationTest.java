@@ -59,4 +59,35 @@ class TransferIntegrationTest extends BaseIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
+
+    @Test
+    void selfTransferReturns422() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(tokenA);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<Map> response = rest.exchange("/transfers", HttpMethod.POST,
+            new HttpEntity<>(Map.of(
+                "sourceAccountId", accountAId,
+                "targetAccountId", accountAId,
+                "amount", "10.00"
+            ), headers), Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    void historyForOtherUsersAccountReturns403() {
+        // Alice tries to read Bob's account history
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(tokenA);
+
+        ResponseEntity<Map> response = rest.exchange(
+            "/transfers?accountId=" + accountBId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
 }
