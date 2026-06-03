@@ -32,8 +32,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(userId, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (JWTVerificationException e) {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                return;
+                SecurityContextHolder.clearContext();
+                // Fall through — SecurityFilterChain decides based on permitAll/authenticated rules
             }
         }
         chain.doFilter(request, response);

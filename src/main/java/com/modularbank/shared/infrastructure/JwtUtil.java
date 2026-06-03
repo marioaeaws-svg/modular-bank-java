@@ -18,10 +18,11 @@ public class JwtUtil {
     private int accessExpirationMinutes;
 
     public String generateAccessToken(UUID userId) {
+        Instant now = Instant.now();
         return JWT.create()
             .withSubject(userId.toString())
-            .withIssuedAt(Instant.now())
-            .withExpiresAt(Instant.now().plusSeconds(accessExpirationMinutes * 60L))
+            .withIssuedAt(now)
+            .withExpiresAt(now.plusSeconds(accessExpirationMinutes * 60L))
             .sign(Algorithm.HMAC256(secret));
     }
 
