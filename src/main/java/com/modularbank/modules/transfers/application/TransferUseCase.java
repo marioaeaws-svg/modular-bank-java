@@ -31,6 +31,13 @@ public class TransferUseCase {
         if (request.sourceAccountId().equals(request.targetAccountId())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Source and target accounts must be different");
         }
+
+        boolean owns = accountsService.findByOwner(userId).stream()
+            .anyMatch(a -> a.id().equals(request.sourceAccountId()));
+        if (!owns) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Source account does not belong to the authenticated user");
+        }
+
         Money amount = Money.of(request.amount());
 
         accountsService.debit(request.sourceAccountId(), amount, request.reference());

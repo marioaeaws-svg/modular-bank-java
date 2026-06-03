@@ -11,7 +11,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -23,11 +25,19 @@ public class TransfersController {
     private final AccountsService accountsService;
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Transfer executeTransfer(@RequestBody @Valid TransferRequest request,
-                                    Authentication auth) {
+    public ResponseEntity<?> executeTransfer(@RequestBody @Valid TransferRequest request,
+                                             Authentication auth) {
         UUID userId = (UUID) auth.getPrincipal();
-        return transferUseCase.execute(userId, request);
+        try {
+            Transfer transfer = transferUseCase.execute(userId, request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(transfer);
+        } catch (ResponseStatusException ex) {
+            return ResponseEntity.status(ex.getStatusCode())
+                .body(Map.of("message", ex.getReason() != null ? ex.getReason() : "Error"));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", ex.getMessage() != null ? ex.getMessage() : ex.getClass().getName()));
+        }
     }
 
     @GetMapping
