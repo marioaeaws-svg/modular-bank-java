@@ -26,15 +26,91 @@ mvn spring-boot:run
 
 ## Arquitectura
 
-Cada módulo tiene capas `domain / application / infrastructure / api`.
-Los módulos solo se comunican a través de las interfaces en `application/`.
-Ningún módulo accede directamente al schema de otro módulo en la DB.
+### Dependencias entre módulos
 
-## Migración a microservicios
+```mermaid
+graph TD
+    Client([Cliente HTTP])
 
-Ver `README-migration.md` en cada módulo. Orden recomendado:
-1. notifications
-2. audit
-3. auth
-4. accounts
-5. transfers
+    Client --> AuthAPI[POST /auth/**]
+    Client --> AccAPI["GET, POST /accounts/**"]
+    Client --> TrAPI["POST, GET /transfers"]
+    Client --> NotifAPI[GET /notifications]
+    Client --> AuditAPI[GET /audit]
+
+    subgraph Auth
+        AuthAPI --> AuthUseCase
+        AuthUseCase --> AuthDB[(auth.*)]
+    end
+
+    subgraph Accounts
+        AccAPI --> AccountsUseCase
+        AccountsUseCase --> IAccountsService
+        IAccountsService --> AccountsDB[(accounts.*)]
+    end
+
+    subgraph Transfers
+        TrAPI --> TransferUseCase
+        TransferUseCase -->|IAccountsService| IAccountsService
+        TransferUseCase -->|INotificationsService| INotificationsService
+        TransferUseCase -->|IAuditService| IAuditService
+        TransferUseCase --> TransfersDB[(transfers.*)]
+    end
+
+    subgraph Notifications
+        NotifAPI --> INotificationsService
+        INotificationsService --> NotifDB[(notifications.*)]
+    end
+
+    subgraph Audit
+        AuditAPI --> IAuditService
+        IAuditService --> AuditDB[(audit.*)]
+    end
+```
+
+### Capas internas de cada módulo
+
+```mermaid
+graph LR
+    subgraph módulo
+        API["api/\n(Controller)"]
+        APP["application/\n(UseCase + Interface)"]
+        INFRA["infrastructure/\n(ServiceImpl + Repository)"]
+        DOMAIN["domain/\n(Entity)"]
+    end
+
+    API --> APP
+    APP --> DOMAIN
+    INFRA --> APP
+    INFRA --> DOMAIN
+
+    subgraph "otros módulos"
+        EXT["application/\n(Interface pública)"]
+    end
+
+    APP -.->|"solo a través\nde interfaces"| EXT
+```
+
+### Aislamiento de schemas en PostgreSQL
+
+```mermaid
+graph TD
+    subgraph PostgreSQL
+        subgraph auth
+            users[(users)]
+            refresh_tokens[(refresh_tokens)]
+        end
+        subgraph accounts
+            accounts_t[(accounts)]
+        end
+        subgraph transfers
+            transfers_t[(transfers)]
+        end
+        subgraph notifications
+            notifications_t[(notifications)]
+        end
+        subgraph audit
+            audit_entries[(audit_entries)]
+        end
+    end
+```
