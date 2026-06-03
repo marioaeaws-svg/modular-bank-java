@@ -17,5 +17,5 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
 
     @Modifying
     @Query("UPDATE Account a SET a.balance = a.balance + :amount WHERE a.id = :id")
-    void credit(UUID id, BigDecimal amount);
+    int credit(UUID id, BigDecimal amount);
 }

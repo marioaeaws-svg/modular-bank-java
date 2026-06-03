@@ -42,6 +42,9 @@ public class AccountsServiceImpl implements AccountsService {
     @Override
     @Transactional
     public void debit(UUID accountId, Money amount, String reference) {
+        if (!accountRepository.existsById(accountId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found");
+        }
         int updated = accountRepository.debitIfSufficient(accountId, amount.amount());
         if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Insufficient funds");
@@ -51,7 +54,10 @@ public class AccountsServiceImpl implements AccountsService {
     @Override
     @Transactional
     public void credit(UUID accountId, Money amount, String reference) {
-        accountRepository.credit(accountId, amount.amount());
+        int updated = accountRepository.credit(accountId, amount.amount());
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found");
+        }
     }
 
     @Override
@@ -67,6 +73,6 @@ public class AccountsServiceImpl implements AccountsService {
     }
 
     private String generateAccountNumber() {
-        return "ACC" + System.currentTimeMillis();
+        return "ACC" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 }
