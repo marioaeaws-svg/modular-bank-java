@@ -1,19 +1,197 @@
+x-jwt-secret: &jwt-secret ${JWT_SECRET:-modular-bank-dev-secret-change-in-production-256bit}
+x-otlp-endpoint: &otlp-endpoint http://tempo:4318/v1/traces
+
 services:
-  postgres:
+  postgres-monolith:
     image: postgres:16
     environment:
       POSTGRES_DB: modular_bank
       POSTGRES_USER: bank
       POSTGRES_PASSWORD: bank
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bank -d modular_bank"]
       interval: 5s
       timeout: 5s
       retries: 5
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_monolith_data:/var/lib/postgresql/data
+
+  postgres-accounts:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: accounts_db
+      POSTGRES_USER: accounts
+      POSTGRES_PASSWORD: accounts
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accounts -d accounts_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_accounts_data:/var/lib/postgresql/data
+
+  postgres-transfers:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: transfers_db
+      POSTGRES_USER: transfers
+      POSTGRES_PASSWORD: transfers
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transfers -d transfers_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_transfers_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      # AMQP (used by the three services), the management UI, and the Prometheus
+      # metrics endpoint (rabbitmq_prometheus, enabled via enabled_plugins — Paso 4,
+      # backs the "consumer lag" panel: rabbitmq_queue_messages_ready/_unacked per queue).
+      - "5672:5672"
+      - "15672:15672"
+      - "15692:15692"
+    volumes:
+      - ./observability/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./observability/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/99-prometheus.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  monolith:
+    build: ./services/monolith
+    depends_on:
+      postgres-monolith:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-monolith:5432/modular_bank
+      DB_USER: bank
+      DB_PASSWORD: bank
+      JWT_SECRET: *jwt-secret
+      RABBITMQ_HOST: rabbitmq
+      OTLP_TRACING_ENDPOINT: *otlp-endpoint
+    ports:
+      # Exposed for local debugging only — the intended public entrypoint is the gateway.
+      - "8082:8080"
+
+  accounts-service:
+    build: ./services/accounts-service
+    depends_on:
+      postgres-accounts:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-accounts:5432/accounts_db
+      DB_USER: accounts
+      DB_PASSWORD: accounts
+      JWT_SECRET: *jwt-secret
+      RABBITMQ_HOST: rabbitmq
+      OTLP_TRACING_ENDPOINT: *otlp-endpoint
+    ports:
+      # Exposed for local debugging only — the intended public entrypoint is the gateway.
+      - "8081:8081"
+
+  transfers-service:
+    build: ./services/transfers-service
+    depends_on:
+      postgres-transfers:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-transfers:5432/transfers_db
+      DB_USER: transfers
+      DB_PASSWORD: transfers
+      JWT_SECRET: *jwt-secret
+      RABBITMQ_HOST: rabbitmq
+      OTLP_TRACING_ENDPOINT: *otlp-endpoint
+    ports:
+      # Exposed for local debugging only — the intended public entrypoint is the gateway.
+      - "8083:8083"
+
+  gateway:
+    build: ./services/gateway
+    depends_on:
+      - monolith
+      - accounts-service
+      - transfers-service
+    environment:
+      MONOLITH_URL: http://monolith:8080
+      ACCOUNTS_SERVICE_URL: http://accounts-service:8081
+      TRANSFERS_SERVICE_URL: http://transfers-service:8083
+      OTLP_TRACING_ENDPOINT: *otlp-endpoint
+    ports:
+      - "8080:8080"
+
+  # --- Observability stack (Paso 4, see ADR-009) ---
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200"   # Tempo query API (used by Grafana)
+      - "4318:4318"   # OTLP HTTP receiver (used by all 4 services)
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway
+
+  loki:
+    image: grafana/loki:2.9.6
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:2.9.6
+    command: ["-config.file=/etc/promtail/promtail-config.yaml"]
+    volumes:
+      - ./observability/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
 
 volumes:
-  postgres_data:
+  postgres_monolith_data:
+  postgres_accounts_data:
+  postgres_transfers_data:

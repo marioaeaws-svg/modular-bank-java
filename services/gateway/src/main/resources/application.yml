@@ -1,0 +1,86 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      # Order matters: the first matching route wins, so the specific
+      # accounts-service/docs routes must be listed before the monolith catch-all.
+      routes:
+        - id: accounts-service-docs
+          uri: ${ACCOUNTS_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/v3/api-docs/accounts-service
+          filters:
+            - RewritePath=/v3/api-docs/accounts-service, /v3/api-docs
+        - id: monolith-docs
+          uri: ${MONOLITH_URL:http://localhost:8082}
+          predicates:
+            - Path=/v3/api-docs/monolith
+          filters:
+            - RewritePath=/v3/api-docs/monolith, /v3/api-docs
+        - id: transfers-service-docs
+          uri: ${TRANSFERS_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/v3/api-docs/transfers-service
+          filters:
+            - RewritePath=/v3/api-docs/transfers-service, /v3/api-docs
+        - id: accounts-service
+          uri: ${ACCOUNTS_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/accounts/**
+        - id: transfers-service
+          uri: ${TRANSFERS_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/transfers/**
+        - id: monolith-remnant
+          uri: ${MONOLITH_URL:http://localhost:8082}
+          predicates:
+            # Explicit allowlist instead of a Path=/** catch-all: a blanket catch-all
+            # would also swallow the Gateway's own local endpoints (/swagger-ui.html,
+            # /webjars/**), proxying them to the monolith instead of letting the
+            # Gateway itself serve them. /transfers/** moved to transfers-service in
+            # Paso 2 (second extraction), so it's no longer in this allowlist.
+            - Path=/auth/**,/notifications/**,/audit/**
+
+# Swagger UI at http://localhost:8080/swagger-ui.html aggregates all three specs — the
+# JSON is proxied through this same Gateway (routes above), and each spec's own
+# "server" is set to the Gateway too (see OpenApiConfig in each service), so
+# "Try it out" in the browser exercises the actual routing, not a
+# direct call to the microservice.
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: accounts-service
+        url: /v3/api-docs/accounts-service
+      - name: transfers-service
+        url: /v3/api-docs/transfers-service
+      - name: monolith
+        url: /v3/api-docs/monolith
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics,info
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: W3C
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99

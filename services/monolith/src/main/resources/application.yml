@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: monolith
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/modular_bank}
+    username: ${DB_USER:bank}
+    password: ${DB_PASSWORD:bank}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    template:
+      observation-enabled: true
+    listener:
+      simple:
+        observation-enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics,info
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: W3C
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
+
+jwt:
+  secret: ${JWT_SECRET:modular-bank-dev-secret-change-in-production-256bit}
+  access-expiration-minutes: 15
+  refresh-expiration-days: 7
+
+gateway:
+  url: ${GATEWAY_URL:http://localhost:8080}
+
+springdoc:
+  swagger-ui:
+    enabled: false   # only the Gateway serves an aggregated Swagger UI page; this service only exposes /v3/api-docs
+
+server:
+  port: 8080

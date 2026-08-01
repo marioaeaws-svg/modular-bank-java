@@ -1,0 +1,37 @@
+# Alert rules (Paso 4 — "deben permitir generar alertas"). Prometheus evaluates
+# and exposes these on its own Alerts UI (http://localhost:9090/alerts); wiring
+# a real notification channel (Alertmanager -> email/Slack) is out of scope for
+# this reference implementation, see docs/adr/ADR-009-stack-observabilidad.md.
+groups:
+  - name: finbank-slo
+    rules:
+      - alert: HighP99Latency
+        expr: histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job)) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 latency above 1s for {{ $labels.job }}"
+          description: "{{ $labels.job }} P99 latency has been above 1s for 2 minutes."
+
+      - alert: HighHttpErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (job)
+          /
+          sum(rate(http_server_requests_seconds_count[5m])) by (job)
+          > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 5xx error rate above 5% for {{ $labels.job }}"
+          description: "{{ $labels.job }} has returned more than 5% HTTP 5xx responses for 2 minutes."
+
+      - alert: RabbitMQConsumerLagHigh
+        expr: rabbitmq_queue_messages_ready{queue=~"accounts-service.commands|transfers-service.account-events|monolith.notifications.transfer-events|monolith.audit.transfer-events"} > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue {{ $labels.queue }} has more than 100 messages ready (consumer lag)"
+          description: "{{ $labels.queue }} has not been drained for 2 minutes — its consumer may be down or stuck (see the retry/DLQ patterns from Paso 3)."

@@ -1,0 +1,49 @@
+package com.modularbank.accounts.shared;
+
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private final JwtUtil jwtUtil;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain chain) throws ServletException, IOException {
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                UUID userId = jwtUtil.validateAndExtractUserId(token);
+                var auth = new UsernamePasswordAuthenticationToken(userId, null, List.of());
+                SecurityContextHolder.getContext().setAuthentication(auth);
+                // Business context for structured logs (Paso 4, see ADR-009) — every log line
+                // for this request now carries userId alongside the traceId/spanId Micrometer
+                // Tracing adds automatically.
+                MDC.put("userId", userId.toString());
+            } catch (JWTVerificationException e) {
+                SecurityContextHolder.clearContext();
+            }
+        }
+        try {
+            chain.doFilter(request, response);
+        } finally {
+            MDC.remove("userId");
+        }
+    }
+}
